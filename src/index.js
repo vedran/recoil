@@ -1,24 +1,23 @@
-function createElement(component, props) {
+function createElement(component, props = {}) {
+  if (typeof component === "string") {
+    return component;
+  }
+
   function toHtml() {
     var html = "";
 
-    var renderResults = component(props);
-    if (!Array.isArray(renderResults)) {
-      renderResults = [renderResults];
-    }
+    // component is a function that returns a component or a string
+    var result = component(props);
 
-    for (var i = 0; i < renderResults.length; i++) {
-      var result = renderResults[i];
-      if (typeof result === "string") {
-        // Text
-        html += result;
-      } else if (typeof result === "function") {
-        // Another Component
-        html += result();
-      } else {
-        // Unknown
-        throw Error(`Unknown component type: ${typeof result}`);
-      }
+    if (typeof result === "string") {
+      // Text
+      html += result;
+    } else if (typeof result === "function") {
+      // Another Component
+      html += result();
+    } else {
+      // Unknown
+      throw Error(`Unknown component type: ${typeof result}`);
     }
 
     return html;
@@ -27,55 +26,39 @@ function createElement(component, props) {
   return toHtml();
 }
 
-function HtmlElement({ type, children = [] }) {
-  function buildOpenTag() {
-    if (type === "br") return "<br/>";
-    return "<" + type + ">";
-  }
+function DivComponent({ children, ...otherProps }) {
+  let processedChildren = (children || []).map(child =>
+    createElement(child, otherProps)
+  );
 
-  function buildClosingTag() {
-    if (type === "br") return "";
-    return "</" + type + ">";
-  }
-
-  let childrenAsList = Array.isArray(children) ? children : [children];
-
-  return [
-    buildOpenTag(),
-    ...childrenAsList.map(child => createElement(child)),
-    buildClosingTag()
-  ];
+  return `<div>${processedChildren.join("\n")}</div>`;
 }
 
-console.log(
-  HtmlElement({
-    type: "div",
-    children: [
-      HtmlElement({
-        children: "Testing"
-      })
-    ]
-  })
-);
-
-/*
 const DoublerComponent = ({ content }) =>
-  HtmlElement({
-    type: "div",
-    children: [
-      `1. ${content}`,
-      HtmlElement({ type: "br" }),
-      HtmlElement({ type: "br" }),
-      `2. ${content}`,
-      HtmlElement({ type: "b", children: "Bolded text is fun" })
-    ]
+  createElement(DivComponent, {
+    children: [createElement(`${content} => ${content}, ${content}`)]
   });
 
-document.getElementById("recoil-root").innerHTML = createElement(
-  DoublerComponent,
-  {
-    content: "Prop Content"
-  }
-);
+const ReverserComponent = ({ content }) => {
+  return createElement(DivComponent, {
+    children: [
+      createElement(
+        `${content} => ${content
+          .split("")
+          .reverse()
+          .join("")}`
+      )
+    ]
+  });
+};
 
-*/
+document.getElementById("recoil-root").innerHTML = createElement(DivComponent, {
+  children: [
+    createElement(DoublerComponent, {
+      content: "Double me"
+    }),
+    createElement(ReverserComponent, {
+      content: "Hello world"
+    })
+  ]
+});
