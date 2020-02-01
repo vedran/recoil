@@ -99,75 +99,70 @@ function useState(defaultVal) {
 }
 
 class Wrapper {
-  constructor(component, props) {
+  constructor(renderFunc, props = { children: [] }, tagName = null) {
+    this.renderFunc = renderFunc;
+    this.props = props;
+
     this.curStateIndex = 0;
     this.states = [];
-    this.component = component;
-    this.props = props;
+    this.tagName = tagName;
   }
 
   render() {
     useState.prototype.states = this.states;
     useState.prototype.curStateIndex = 0;
 
-    return this.component(this.props);
+    // Returns wrappers
+    return this.renderFunc(this.props);
   }
 }
 
-function createElement(component, props = {}) {
-  if (typeof component === "string") {
-    return component;
+function createElement(renderFuncOrString, props = {}, tagName = null) {
+  if (typeof renderFuncOrString === "string") {
+    return new Wrapper(() => renderFuncOrString);
   }
 
-  function toHtml() {
-    var html = "";
+  const newWrapper = new Wrapper(renderFuncOrString, props, tagName);
+  return newWrapper;
+  // return new Wrapper(renderFuncOrString, props, tagName);
+}
 
-    const w = new Wrapper(component, props);
-    var result = w.render();
+function DivComponent({ children = [], ...otherProps }) {
+  return createElement(() => children, {}, "div");
+}
 
-    if (typeof result === "string") {
-      // Text
-      html += result;
-    } else if (typeof result === "function") {
-      // Another Component
-      html += result();
-    } else {
-      // Unknown
-      throw Error(`Unknown component type: ${typeof result}`);
-    }
+const createHTML = wrapper => {
+  var html = "";
 
-    return html;
+  // The result of a render call will either be a string or another wrapper
+  var stringOrWrapper = wrapper.render();
+  const childrenType = typeof stringOrWrapper;
+
+  if (wrapper.tagName) {
+    html += `<${wrapper.tagName}>\n`;
   }
 
-  return toHtml();
-}
+  if (childrenType === "string") {
+    html += stringOrWrapper;
+  } else if (childrenType === "object") {
+    let childWrappers = Array.isArray(stringOrWrapper)
+      ? stringOrWrapper
+      : [stringOrWrapper];
 
-function DivComponent({ children, ...otherProps }) {
-  // TODO: Use otherProps as attributes rather than passing them down
+    html += childWrappers.reduce((acc, curVal) => {
+      return acc + createHTML(curVal);
+    }, "");
 
-  let processedChildren = (children || []).map(child =>
-    createElement(child, otherProps)
-  );
+    html += "\n";
+  } else {
+    throw Error(`Unknown component type: ${typeof stringOrWrapper}`);
+  }
 
-  return `<div>${processedChildren.join("\n")}</div>`;
-}
+  if (wrapper.tagName) {
+    html += `</${wrapper.tagName}>\n`;
+  }
 
-const DoublerComponent = ({ content }) =>
-  createElement(DivComponent, {
-    children: [createElement(`${content} => ${content}, ${content}`)]
-  });
-
-const ReverserComponent = ({ content }) => {
-  return createElement(DivComponent, {
-    children: [
-      createElement(
-        `${content} => ${content
-          .split("")
-          .reverse()
-          .join("")}`
-      )
-    ]
-  });
+  return html;
 };
 
 const DoublerWithHooksComponent = () => {
@@ -185,14 +180,8 @@ const DoublerWithHooksComponent = () => {
   });
 };
 
-document.getElementById("recoil-root").innerHTML = createElement(DivComponent, {
-  children: [
-    createElement(DoublerComponent, {
-      content: "Double me"
-    }),
-    createElement(ReverserComponent, {
-      content: "Hello world"
-    }),
-    createElement(DoublerWithHooksComponent)
-  ]
-});
+document.getElementById("recoil-root").innerHTML = createHTML(
+  createElement(DivComponent, {
+    children: createElement(() => "hello")
+  })
+);
