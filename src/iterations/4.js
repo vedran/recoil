@@ -1,24 +1,10 @@
 /*
-TODOs
-- Generating HTML from objects (Components)
-- Custom Component Props
-- Html component props
-- Internal component state w/hooks
-- Re-rendering on change state
-- One-way data binding
-- Reconciliation
-- Context
-- JSX
-*/
+Got hooks working!
 
-// When the setterFunc is called, we need to look up this particular value, update it
-// and then somehow call render on the element again
+Created an ugly global NEEDS_TO_RENDER that is set to true when useState is called
+or when a setter from useState is called
 
-/*
-
-When I call useState, I know that for this instance of the component, variable #1 and setter #1
-correspond to this particular value and setter
-
+For now this will trigger a rerender of the entire app every second. No reconciliation or anything.
 */
 
 var NEEDS_TO_RENDER = true;
