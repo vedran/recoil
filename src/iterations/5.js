@@ -1,16 +1,18 @@
 /*
-TODOs
-- Re-rendering on change state
-- Reconciliation
-- Context
-- JSX
-*/
 
-/* 
+Exposed onClick prop and use div as placeholder HTML tag for components
+
 
 Notes:
-- Add input text element and expand html component props
-- Problem: When the whole app re-renders, the state remains but the focus isn't maintained
+
+- Next up is adding support for the onClick handler in both custom components and html elements
+- We should start properly building elements rather than manually building the text strings..
+- How do we handle onClick handlers for custom components? The custom components aren't regular html tags...
+- So do we just consider then divs?
+- If we treat them as divs then the styling may be unexpected
+- Let's start with divs for now because it is simple
+
+
 */
 
 var NEEDS_TO_RENDER = true;
@@ -71,17 +73,9 @@ const buildDOM = wrapper => {
 
   // Current element has an HTML tag
   if (wrapper.tagName) {
-    const { onClick, onChange, ...attributeProps } = wrapper.props;
-    if (onClick) {
-      element.onclick = onClick;
+    if (wrapper.props.onClick) {
+      element.onclick = wrapper.props.onClick;
     }
-    if (onChange) {
-      element.onkeyup = onChange;
-    }
-
-    Object.entries(attributeProps).map(([key, value]) =>
-      element.setAttribute(key, value)
-    );
   }
 
   if (childrenType === "string") {
@@ -103,25 +97,20 @@ function DivComponent({ children = [], ...otherProps }) {
   return createElement(() => children, otherProps, "div");
 }
 
-function InputComponent({ children = [], ...otherProps }) {
-  return createElement(() => children, otherProps, "input");
+function ButtonComponent({ children = [], ...otherProps }) {
+  return createElement(() => children, otherProps, "button");
 }
 
 function CounterComponent() {
-  [colour, setColour] = useState("red");
+  [count, setCount] = useState(0);
 
   return [
-    createElement(DivComponent, {
-      style: `background: ${colour}`,
-      children: [
-        createElement(InputComponent, {
-          type: "text",
-          value: colour,
-          onChange: e => {
-            setColour(e.target.value);
-          }
-        })
-      ]
+    createElement(`Hello ${count}`),
+    createElement(ButtonComponent, {
+      children: [createElement("Click me")],
+      onClick: () => {
+        setCount(count + 1);
+      }
     })
   ];
 }

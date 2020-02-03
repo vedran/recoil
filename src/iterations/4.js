@@ -75,7 +75,7 @@ const createHTML = wrapper => {
       : [stringOrWrapper];
 
     html += childWrappers.reduce((acc, curVal) => {
-      return acc + createHTML(curVal);
+      return acc + buildDOM(curVal);
     }, "");
 
     html += "\n";
@@ -109,7 +109,7 @@ let rootWrapper = createElement(DivComponent, {
 function eventLoop() {
   if (NEEDS_TO_RENDER) {
     console.log("RENDERED");
-    document.getElementById("recoil-root").innerHTML = createHTML(rootWrapper);
+    document.getElementById("recoil-root").innerHTML = buildDOM(app);
     NEEDS_TO_RENDER = false;
   }
 }
