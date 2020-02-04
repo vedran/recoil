@@ -4,66 +4,29 @@ Props are passed into the custom components, but not into the divs yet.
 */
 
 function createElement(component, props = {}) {
-  if (typeof component === "string") {
-    return component;
+  if (typeof component === 'string') {
+    return component
   }
 
-  function toHtml() {
-    var html = "";
-
-    // component is a function that returns a component or a string
-    var result = component(props);
-
-    if (typeof result === "string") {
-      // Text
-      html += result;
-    } else if (typeof result === "function") {
-      // Another Component
-      html += result();
-    } else {
-      // Unknown
-      throw Error(`Unknown component type: ${typeof result}`);
-    }
-
-    return html;
-  }
-
-  return toHtml();
+  return component(props)
 }
 
 function DivComponent({ children, ...otherProps }) {
   let processedChildren = (children || []).map(child =>
     createElement(child, otherProps)
-  );
+  )
 
-  return `<div>${processedChildren.join("\n")}</div>`;
+  return `<div>${processedChildren.join('\n')}</div>`
 }
 
-const DoublerComponent = ({ content }) =>
+const GreetingComponent = ({ name }) =>
   createElement(DivComponent, {
-    children: [createElement(`${content} => ${content}, ${content}`)]
-  });
+    children: [createElement(`Hello ${name}`)],
+  })
 
-const ReverserComponent = ({ content }) => {
-  return createElement(DivComponent, {
-    children: [
-      createElement(
-        `${content} => ${content
-          .split("")
-          .reverse()
-          .join("")}`
-      )
-    ]
-  });
-};
-
-document.getElementById("recoil-root").innerHTML = createElement(DivComponent, {
-  children: [
-    createElement(DoublerComponent, {
-      content: "Double me"
-    }),
-    createElement(ReverserComponent, {
-      content: "Hello world"
-    })
-  ]
-});
+document.getElementById('recoil-root').innerHTML = createElement(
+  GreetingComponent,
+  {
+    name: 'Jeff',
+  }
+)
