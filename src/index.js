@@ -1,49 +1,16 @@
 /*
+Learnings:
+* We set that the global state has updated
+* We call app.render()
+* app.render() grabs its previously rendered results
+* app.render() calls its renderFunc
+* app.render() compares the previous results against the current ones
+* these results are all still wrappers
+* if the new wrappers are the same type, then loop through each original wrapper and call receive()
+* receive will look at the new wrapper, take its state and props, then call render() on it
+* then 'receive' is in charge of updating the DOM element as well..
 
-
-Next up is per-component rendering vs unmounting and remounting
-
-So right now if we have a component that contains an <input> tag
-
-If the state of the component changes, then the wrapper of that component
-will have render() called.
-
-That render() call eventually set the element's innerHTML to the result of calling render()
-
-So we're unmounting ALL the children of a changed component, every time, then we're actually grabbing
-the cached element again, injecting into the DOM again, and then returning it..
-
-
-So how do we avoid unmounting and remounting?
-
-I know React uses the logic...
-
-1. Type is different
-2. Key is different
-
-For the purposes of recoil v1, let's just go with type being different as the necessary condition for unmounting a component
-
-
-Algorithm:
-
-1. Iterate through old DOM tree
-2. Iterate through new DOM tree at the same time
-
-
-
-Three cases:
-
-1. Building new DOM element
- - If old != new, delete old if its not null, append new
-2. Removing old DOM element 
- - If old != new, delete old if its not null, append new
-
-3. Updating existing DOM element
-- Use .attributes to get all of the attributes
-- Handle the removed attributes case
-- Handle the new attributes case
-- Handle the changed attributes case
-
+* so when render() is called, it will go through its children and either mount() or receive() each of them
 */
 
 function reconcile(wrapper) {
@@ -51,7 +18,7 @@ function reconcile(wrapper) {
   const newElement = wrapper.render()
 }
 
-const WRAPPERS_TO_RENDER = []
+const REFRESH_APP = true
 
 function useState(defaultVal) {
   const { curStateIndex, states, wrapper } = useState.stateInfo
@@ -66,9 +33,7 @@ function useState(defaultVal) {
     states[curStateIndex],
     newVal => {
       states[curStateIndex] = newVal
-      if (!WRAPPERS_TO_RENDER.find(w => w === wrapper)) {
-        WRAPPERS_TO_RENDER.push(wrapper)
-      }
+      REFRESH_APP = true
     },
   ]
 }
@@ -96,8 +61,13 @@ class Wrapper {
       wrapper: this,
     }
 
-    // Returns wrappers
-    return this.renderFunc(this.props)
+    this.lastRender = this.curRender
+    this.curRender = this.renderFunc(this.props)
+
+    // So last render already created the wrappers
+    // How do I handle a regular re-render because of a state change?
+
+    return this.curRender
   }
 }
 
@@ -110,19 +80,20 @@ function createElement(renderFuncOrString, props = {}, tagName = null) {
 }
 
 function createHtmlComponent({ children = [], tag, ...otherProps }) {
-  return createElement(() => children, otherProps, tag)
+  return createElement(() => children, { children, ...otherProps }, tag)
 }
 
-function updateOrCreateDOM(wrapper) {
+function buildHTML(wrapper) {
   // The result of a render call will either be a string or another wrapper
-  var stringOrWrapper = wrapper.render()
-  const childrenType = typeof stringOrWrapper
+  var renderResultStringOrWrapper = wrapper.render()
+  wrapper.lastRender = renderResultStringOrWrapper
+  const resultType = typeof renderResultStringOrWrapper
 
   var element =
     wrapper.element || document.createElement(wrapper.tagName || 'div')
 
   // Current element has an HTML tag
-  const { onClick, ...attributeProps } = wrapper.props
+  const { onClick, children, ...attributeProps } = wrapper.props
   if (onClick) {
     element.onclick = onClick
   }
@@ -135,18 +106,19 @@ function updateOrCreateDOM(wrapper) {
     element.setAttribute('data-recoil-component', wrapper.componentName)
   }
 
-  if (childrenType === 'string') {
+  if (resultType === 'string') {
     element.innerHTML = ''
-    element.appendChild(document.createTextNode(stringOrWrapper))
-  } else if (childrenType === 'object') {
-    let childWrappers = Array.isArray(stringOrWrapper)
-      ? stringOrWrapper
-      : [stringOrWrapper]
+    element.appendChild(document.createTextNode(renderResultStringOrWrapper))
+  } else if (resultType === 'object') {
+    let resultWrappers = Array.isArray(renderResultStringOrWrapper)
+      ? renderResultStringOrWrapper
+      : [renderResultStringOrWrapper]
+
     const oldElements = [...element.childNodes]
 
-    const newWrapperElements = childWrappers.map(child => ({
-      wrapper: child,
-      element: updateOrCreateDOM(child),
+    const newWrapperElements = resultWrappers.map(resultWrapper => ({
+      wrapper: resultWrapper,
+      element: buildHTML(resultWrapper),
     }))
 
     while (oldElements.length && newWrapperElements.length) {
@@ -162,6 +134,7 @@ function updateOrCreateDOM(wrapper) {
         oldElement.tagName !== newElement.tagName ||
         oldComponentType !== newComponentType
       ) {
+        debugger
         oldElement.parentNode.replaceChild(newElement, oldElement)
       } else {
         // B. Both DOM elements have the same tag/component type. Update the attributes
@@ -178,20 +151,24 @@ function updateOrCreateDOM(wrapper) {
           oldElement.setAttribute(attr.name, newElement.getAttribute(attr.name))
         }
 
+        if (oldElement.innerHTML !== newElement.innerHTML) {
+          oldElement.innerHTML = newElement.innerHTML
+        }
+
         // 3. Update the wrapper to point to the old element
         newWrapperElement.wrapper.element = oldElement
       }
     }
 
     // C. Leftover old elements that we didn't match to new elements should be unmounted
-    oldElements.map(oldElement => oldElements.remove())
+    oldElements.map(oldElement => oldElement.remove())
 
     // D. Leftover new elements that we didn't match to old elements should be added
     newWrapperElements.map(newWrapperElement =>
       element.appendChild(newWrapperElement.element)
     )
   } else {
-    throw Error(`Unknown component type: ${typeof stringOrWrapper}`)
+    throw Error(`Unknown component type: ${typeof renderResultStringOrWrapper}`)
   }
 
   wrapper.element = element
@@ -200,10 +177,6 @@ function updateOrCreateDOM(wrapper) {
 
 function CounterComponent() {
   const [count, setCount] = useState(0)
-
-  console.log(`CounterComponent: count = ${count}`)
-
-  TODO: Why does this count get incremented to 1 but the div doesn't update?
 
   return [
     createHtmlComponent({
@@ -214,14 +187,15 @@ function CounterComponent() {
           tag: 'div',
           children: `Count: ${count}`,
         }),
-        createHtmlComponent({
-          tag: 'button',
-          onClick: () => setCount(count - 1),
-          children: 'Subtract',
-        }),
+        // createHtmlComponent({
+        //   tag: 'button',
+        //   onClick: () => setCount(count - 1),
+        //   children: 'Subtract',
+        // }),
         createHtmlComponent({
           tag: 'button',
           onClick: () => {
+            console.log('CLICKED')
             setCount(count + 1)
           },
           children: 'Add',
@@ -231,19 +205,65 @@ function CounterComponent() {
   ]
 }
 
+function wrapperToHTML(wrapper) {
+  // The result of a render call will either be a string or another wrapper
+  var element = document.createElement(wrapper.tagName || 'div')
+
+  // Current element has an HTML tag
+  const { onClick, children, ...attributeProps } = wrapper.props
+  if (onClick) {
+    element.onclick = onClick
+  }
+
+  Object.entries(attributeProps).map(([key, value]) => {
+    element.setAttribute(key, value)
+  })
+
+  if (wrapper.componentName) {
+    element.setAttribute('data-recoil-component', wrapper.componentName)
+  }
+
+  if (resultType === 'string') {
+    element.innerHTML = ''
+    element.appendChild(document.createTextNode(renderResultStringOrWrapper))
+  } else if (resultType === 'object') {
+    let resultWrappers = Array.isArray(renderResultStringOrWrapper)
+      ? renderResultStringOrWrapper
+      : [renderResultStringOrWrapper]
+
+    resultWrappers.map(w => element.appendChild(wrapperToHTML(w)))
+  } else {
+    throw Error(`Unknown component type: ${typeof renderResultStringOrWrapper}`)
+  }
+
+  return element
+}
+
 let app = createHtmlComponent({
-  children: [createElement(CounterComponent), createElement(CounterComponent)],
+  children: [
+    createElement(CounterComponent),
+    // createElement(CounterComponent),
+  ],
   tag: 'div',
 })
 
 const rootElement = document.getElementById('recoil-root')
 rootElement.innerHTML = ''
-rootElement.appendChild(updateOrCreateDOM(app))
+rootElement.appendChild(buildHTML(app))
+
+function reconcileChanges(lastRender, nextRender) {
+  // TODO: Unmount the last render wrapper elements..
+  const nextHTML = wrapperToHTML(nextWrapper)
+  return nextRender
+
+  let resultWrappers = Array.isArray(renderResultStringOrWrapper)
+    ? renderResultStringOrWrapper
+    : [renderResultStringOrWrapper]
+}
 
 function eventLoop() {
-  while (WRAPPERS_TO_RENDER.length > 0) {
-    const updated = WRAPPERS_TO_RENDER.shift()
-    updateOrCreateDOM(updated)
+  if (REFRESH_APP) {
+    // TODO: Render from the top to the bottom
   }
 }
 
