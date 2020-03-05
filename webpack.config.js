@@ -1,4 +1,4 @@
-const HtmlWebpackPlugin = require("html-webpack-plugin");
+const HtmlWebpackPlugin = require('html-webpack-plugin')
 
 module.exports = {
   module: {
@@ -7,15 +7,15 @@ module.exports = {
         test: /\.js$/,
         exclude: /node_modules/,
         use: {
-          loader: "babel-loader"
-        }
-      }
-    ]
+          loader: 'babel-loader',
+        },
+      },
+    ],
   },
-  devtool: "inline-source-map",
+  devtool: 'inline-source-map',
   plugins: [
     new HtmlWebpackPlugin({
-      template: "index.html"
-    })
-  ]
-};
+      template: 'index.html',
+    }),
+  ],
+}
