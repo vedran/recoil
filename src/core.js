@@ -1,9 +1,32 @@
 DOM_ATTRIBUTES_WHITELIST = {
   'style': true,
+  'value': true,
+  'onchange': true,
+  'oninput': true,
+}
+
+function addPropsToDOMElement(props, element) {
+  const { onclick, onchange, oninput, ...attributeProps } = (props || {})
+  if (onclick) {
+    element.onclick = onclick
+  }
+  if (onchange) {
+    element.onchange = onchange
+  }
+
+  if (oninput) {
+    element.oninput = oninput
+  }
+
+  Object.entries(attributeProps).map(([key, value]) => {
+    if (DOM_ATTRIBUTES_WHITELIST[key]) {
+      element.setAttribute(key, value)
+    }
+  })
 }
 
 function useState(defaultVal) {
-  const { curStateIndex, states, component } = useState.stateInfo
+  const { curStateIndex, states } = useState.stateInfo
   useState.stateInfo.curStateIndex += 1
 
   // Check if we've made this many calls to useState for this instance yet
@@ -89,16 +112,7 @@ class Component {
       this.curDOMNode = document.createElement(tag)
     }
 
-    const { onclick, ...attributeProps } = (this.props || {})
-    if (onclick) {
-      this.curDOMNode.onclick = onclick
-    }
-
-    Object.entries(attributeProps).map(([key, value]) => {
-      if (DOM_ATTRIBUTES_WHITELIST[key]) {
-        this.curDOMNode.setAttribute(key, value)
-      }
-    })
+    addPropsToDOMElement(this.props, this.curDOMNode)
 
     const finalRenderResult = []
     let curResultIndex = 0
@@ -113,7 +127,6 @@ class Component {
 
       // Different types, unmount the old
       if (typeof cur !== typeof next) {
-        console.log("DIFFERENT RESULTS, REMOUNTING!")
         toUnmount.push(this.curDOMNode.childNodes[curResultIndex])
         toMount.push(next)
       } else {
@@ -134,22 +147,7 @@ class Component {
             toUnmount.push(this.curDOMNode.childNodes[curResultIndex])
             toMount.push(next)
           } else {
-
-            // Same component types
-            if (typeof cur.typeOrRenderFunc === "string") {
-              // regular DOM node, update the attributes
-
-              const { onclick, ...attributeProps } = (cur.props || {})
-              if (onclick) {
-                cur.curDOMNode.onclick = onclick
-              }
-
-              Object.entries(attributeProps).map(([key, value]) => {
-                if (DOM_ATTRIBUTES_WHITELIST[key]) {
-                  cur.curDOMNode.setAttribute(key, value)
-                }
-              })
-            }
+            addPropsToDOMElement(cur.props, cur.curDOMNode)
 
             cur.typeOrRenderFunc = next.typeOrRenderFunc
             cur.children = next.children

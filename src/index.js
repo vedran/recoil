@@ -20,7 +20,7 @@ const CounterComponent = () => {
         ),
         new Component(
           'button',
-          { 'onclick': () => { console.log("CLICKED ADD!!!"); setCount(count + 1) } },
+          { 'onclick': () => setCount(count + 1) },
           ['Add'],
         ),
       ],
@@ -28,11 +28,36 @@ const CounterComponent = () => {
   ]
 }
 
+const InputComponent = () => {
+  const [value, setValue] = useState("dave")
+
+  return [
+    new Component(
+      'div',
+      { style: 'border: 1px solid black; padding: 4px; margin: 16px 4px;' },
+      [
+        `Hello ${value}`,
+        new Component('div'),
+        new Component(
+          'input',
+          {
+            value: value,
+            oninput: (e) => {
+              setValue(e.target.value)
+            }
+          }
+        ),
+      ],
+    )
+  ]
+}
+
+
 const App = new Component(
   'div',
   null,
   [
-    new Component(CounterComponent),
+    new Component(InputComponent),
     new Component(CounterComponent)
   ]
 )
@@ -45,7 +70,6 @@ rootElement.appendChild(App.curDOMNode)
 
 function eventLoop() {
   if (globalState.NEEDS_TO_UPDATE) {
-    console.log("RENDERING!")
     globalState.NEEDS_TO_UPDATE = false
     App.render()
   }
