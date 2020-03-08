@@ -1,121 +1,198 @@
-/*
+DOM_ATTRIBUTES_WHITELIST = {
+  'style': true,
+}
 
-What does recoil need to do to be like React?
+function useState(defaultVal) {
+  const { curStateIndex, states, component } = useState.stateInfo
+  useState.stateInfo.curStateIndex += 1
 
+  // Check if we've made this many calls to useState for this instance yet
+  if (curStateIndex > states.length - 1) {
+    useState.stateInfo.states.push(defaultVal)
+  }
 
-Components
- * Components can mount()
-   * Generates elements for the DOM
- * Components can unmount()
-   * Removes elements from the DOM
- * Components can update based on changes..
-   * How does this one work?
-     * What are the steps when the app state somewhere changes?
-        * I need to start at the top of the tree
-        * What does render() return? It must return the Component?
-*/
+  return [
+    states[curStateIndex],
+    newVal => {
+      states[curStateIndex] = newVal
+      globalState.NEEDS_TO_UPDATE = true
+    },
+  ]
+}
+
+function asArray(renderResult) {
+  if (renderResult == undefined) {
+    return []
+  }
+
+  if (Array.isArray(renderResult)) {
+    return renderResult
+  }
+
+  return [renderResult]
+}
+
+function buildDOMNode(renderResult) {
+  if (typeof renderResult === "string") {
+    return document.createTextNode(renderResult)
+  }
+
+  renderResult.render()
+
+  return renderResult.curDOMNode
+}
+
+function copyRenderResult(stringOrComponent) {
+  if (typeof stringOrComponent === "string") {
+    return stringOrComponent;
+  }
+
+  const result = new Component(stringOrComponent.typeOrRenderFunc,
+    { ...stringOrComponent.props },
+    stringOrComponent.children ? stringOrComponent.children.map(c => copyRenderResult(c)) : null)
+
+  return result
+}
+
 
 class Component {
-  constructor(renderFunc, props = {}, tag = 'div') {
-    this.curRenderedElement = null
-    this.curRenderedComponents = []
-    this.renderFunc = renderFunc
-    this.tag = tag
-  }
+  constructor(typeOrRenderFunc, props, children) {
+    this.typeOrRenderFunc = typeOrRenderFunc
+    this.props = props
+    this.children = children
 
-  buildDOMElement() {
-    const newElement = document.createElement(this.tag)
-    const newRenderedComponents = [...this.renderFunc(this.props)]
-
-    newRenderedComponents.map(newComponent => {
-      if (typeof newComponent === 'string') {
-        newElement.append(newComponent)
-      } else {
-        newElement.append(newComponent.buildDOMElement())
-      }
-    })
-
-    return newElement
-  }
-
-  removeDOMElement() {
-    if (!this.curRenderedElement) {
-      return
-    }
-
-    this.curRenderedElement.remove()
-    this.curRenderedElement = null
+    // Reconciliation cache
+    this.curDOMNode = null
+    this.curRenderResult = []
+    this.curStateIndex = 0
+    this.states = []
   }
 
   render() {
-    // 1. Call renderFunc(), the result of render is more components
-    const curRenderedComponents = [...this.curRenderedComponents]
-    const newRenderedComponents = [...this.renderFunc(this.props)]
+    let tag = "div"
 
-    const finalNewComponents = []
-    if (!this.curRenderedElement) {
-      this.curRenderedElement = document.createElement('div')
+    useState.stateInfo = {
+      states: this.states,
+      curStateIndex: 0,
+      component: this,
     }
 
-    let curChildIndex = 0
-    const finalComponents = []
+    let nextRenderResult = []
+    if (typeof this.typeOrRenderFunc === "string") {
+      tag = this.typeOrRenderFunc
+      nextRenderResult = asArray(this.children).map(c => copyRenderResult(c))
+    } else {
+      nextRenderResult = asArray(this.typeOrRenderFunc(this.props)).map(c => copyRenderResult(c))
+    }
 
-    // 2. Compare this list of rendered components against the current ones
-    while (newRenderedComponents.length && curRenderedComponents.length) {
-      const newComponent = newRenderedComponents.shift()
-      const curComponent = curRenderedComponents.shift()
-      const curChild = this.curRenderedElement.childNodes[curChildIndex]
+    if (!this.curDOMNode) {
+      this.curDOMNode = document.createElement(tag)
+    }
 
-      // Matching types, update attributes from props
-      if (
-        newComponent.tag === curComponent.tag &&
-        newComponent.renderFunc.name === curChild.renderFunc.name
-      ) {
-        const { children, ...attributeProps } = newComponent.props
-        Object.entries(attributeProps).map(([key, value]) => {
-          curChild.setAttribute(key, value)
-        })
-        finalComponents.push(curComponent)
-      } else {
-        // Not matching type, replace with new element
+    const { onclick, ...attributeProps } = (this.props || {})
+    if (onclick) {
+      this.curDOMNode.onclick = onclick
+    }
 
-        const newElement = newComponent.buildDOMElement()
-        newComponent.curRenderedElement = newElement
-        this.curRenderedElement.replaceChild(curChild)
-
-        finalComponents.push(newComponent)
+    Object.entries(attributeProps).map(([key, value]) => {
+      if (DOM_ATTRIBUTES_WHITELIST[key]) {
+        this.curDOMNode.setAttribute(key, value)
       }
+    })
 
-      curChildIndex += 1
+    const finalRenderResult = []
+    let curResultIndex = 0
+    let nextResultIndex = 0
+
+    const toUnmount = []
+    const toMount = []
+
+    while (curResultIndex < this.curRenderResult.length && nextResultIndex < nextRenderResult.length) {
+      const cur = this.curRenderResult[curResultIndex]
+      const next = nextRenderResult[nextResultIndex]
+
+      // Different types, unmount the old
+      if (typeof cur !== typeof next) {
+        console.log("DIFFERENT RESULTS, REMOUNTING!")
+        toUnmount.push(this.curDOMNode.childNodes[curResultIndex])
+        toMount.push(next)
+      } else {
+        // Both types are the same, and both are string
+        if (typeof cur === "string") {
+          if (cur !== next) {
+            this.curDOMNode.childNodes[curResultIndex].textContent = next
+            finalRenderResult.push(next)
+          } else {
+            finalRenderResult.push(cur)
+          }
+        }
+        else {
+          // Both are components..
+
+          // Different component types, unmount
+          if (cur.typeOrRenderFunc !== next.typeOrRenderFunc) {
+            toUnmount.push(this.curDOMNode.childNodes[curResultIndex])
+            toMount.push(next)
+          } else {
+
+            // Same component types
+            if (typeof cur.typeOrRenderFunc === "string") {
+              // regular DOM node, update the attributes
+
+              const { onclick, ...attributeProps } = (cur.props || {})
+              if (onclick) {
+                cur.curDOMNode.onclick = onclick
+              }
+
+              Object.entries(attributeProps).map(([key, value]) => {
+                if (DOM_ATTRIBUTES_WHITELIST[key]) {
+                  cur.curDOMNode.setAttribute(key, value)
+                }
+              })
+            }
+
+            cur.typeOrRenderFunc = next.typeOrRenderFunc
+            cur.children = next.children
+            cur.props = next.props
+            cur.render()
+            finalRenderResult.push(cur)
+          }
+        }
+      }
+      curResultIndex += 1
+      nextResultIndex += 1
     }
 
-    // Unmount any leftover elements from last time that didn't match new elements
-    const numExtraElements = Math.max(
-      0,
-      this.curRenderedComponents.length - curChildIndex + 1
-    )
-    while (numExtraElements) {
-      this.curRenderedElement.removeChild(
-        this.curRenderedElement.childNodes[curChildIndex]
-      )
-      numExtraElements -= 1
+    // Mount new components
+    while (nextResultIndex < nextRenderResult.length) {
+      const next = nextRenderResult[nextResultIndex]
+      const newDOMNode = buildDOMNode(next)
+      this.curDOMNode.append(newDOMNode)
+      nextResultIndex += 1
+      finalRenderResult.push(next)
     }
 
-    while (newRenderedComponents.length) {
-      const newComponent = newRenderedComponents.shift()
-      const newElement = newComponent.buildDOMElement()
-
-      newComponent.curRenderedElement = newElement
-      this.curRenderedElement.append(newElement)
-      finalComponents.push(newComponent)
+    while (toUnmount.length) {
+      const next = toUnmount.shift()
+      this.curDOMNode.removeChild(next)
     }
 
-    this.curRenderedComponents = finalComponents
+    while (toMount.length) {
+      const next = toMount.shift()
+      finalRenderResult.push(next)
+      this.curDOMNode.append(buildDOMNode(next))
+    }
 
-    return this.curRenderedComponents
+    this.curRenderResult = finalRenderResult
   }
+}
+
+const globalState = {
+  NEEDS_TO_UPDATE: false,
 }
 
 module.exports = {
   Component,
+  useState,
+  globalState
 }
